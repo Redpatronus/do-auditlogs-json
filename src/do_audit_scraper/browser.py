@@ -112,6 +112,19 @@ def _context(cfg: Settings) -> Iterator[BrowserContext]:
             browser.close()
 
 
+def _settle(page: Page, timeout_ms: int = 15_000) -> None:
+    """Best-effort wait for network idle; busy pages (analytics polling) must not fail the run."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout_ms)
+    except PlaywrightTimeout:
+        log.debug("network_not_idle", url=page.url)
+
+
+def _goto(page: Page, url: str) -> None:
+    page.goto(url, wait_until="domcontentloaded")
+    _settle(page)
+
+
 def _on_login_page(page: Page) -> bool:
     return "/login" in page.url or page.locator("input[type=password]").count() > 0
 
@@ -171,7 +184,7 @@ def auto_login(cfg: Settings, page: Page) -> None:
     """Headless email + password + TOTP login. Selectors are configurable via DOAL_*."""
     assert cfg.email and cfg.password and cfg.totp_secret  # noqa: S101
     log.info("auto_login_start")
-    page.goto(cfg.base_url.rstrip("/") + cfg.login_path, wait_until="networkidle")
+    _goto(page, cfg.base_url.rstrip("/") + cfg.login_path)
     _dismiss_consent(page)
     page.fill(cfg.email_selector, cfg.email)
     if page.locator(cfg.password_selector).count() == 0:  # two-step form
@@ -213,7 +226,7 @@ def auto_login(cfg: Settings, page: Page) -> None:
         page.wait_for_url(lambda u: "/login" not in u and "challenge" not in u, timeout=20_000)
     except PlaywrightTimeout:
         pass
-    page.wait_for_load_state("networkidle")
+    _settle(page)
     if _on_login_page(page):
         where = _dump_debug(cfg, page, "login_still_on_login")
         raise SessionExpiredError(f"still on login page after 2FA (url={page.url}); see {where}")
@@ -223,12 +236,12 @@ def auto_login(cfg: Settings, page: Page) -> None:
 
 def _open_audit_page(cfg: Settings, ctx: BrowserContext) -> Page:
     page = ctx.new_page()
-    page.goto(cfg.audit_url, wait_until="networkidle")
+    _goto(page, cfg.audit_url)
     if _on_login_page(page):
         if not cfg.can_auto_login:
             raise SessionExpiredError("redirected to login; session expired")
         auto_login(cfg, page)
-        page.goto(cfg.audit_url, wait_until="networkidle")
+        _goto(page, cfg.audit_url)
         if _on_login_page(page):
             raise SessionExpiredError("still on login page after auto-login")
     try:
