@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- do-audit-scraper specific ---
+# secrets - never commit
+.env
+.env.*
+!.env.example
+# runtime data (logs, session cookies, debug dumps): keep the folder, not its contents
+data/*
+!data/.gitkeep
