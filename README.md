@@ -1,186 +1,191 @@
 # DO Audit Scraper
 
-Sťahuje **audit log z DigitalOcean** (Security → History) a priebežne ho zapisuje do súboru
-**NDJSON** (jedna JSON udalosť na riadok). Je určený na beh na serveri a ako vstup pre **Wazuh**
-(integrácia je ďalšia fáza).
+Downloads the **DigitalOcean audit log** (Security → History) and continuously writes it to an
+**NDJSON** file (one JSON event per line). It is designed to run on a server and to feed **Wazuh**
+(integration is the next phase).
 
-Inšpirované [ionsec/DO-Audit-Log-Scraper](https://github.com/ionsec/DO-Audit-Log-Scraper).
+Inspired by [ionsec/DO-Audit-Log-Scraper](https://github.com/ionsec/DO-Audit-Log-Scraper).
 
-## Ako to funguje
+## How it works
 
-DigitalOcean nemá API na audit logy (API token sem nestačí), dáta sú len vo webovej konzole.
-Scraper preto:
+DigitalOcean has no API for audit logs (an API token is not enough); the data is only available in
+the web console. The scraper therefore:
 
-1. spustí prehliadač (Playwright / Chromium) a prihlási sa (e-mail + heslo + TOTP kód),
-2. otvorí `https://cloud.digitalocean.com/security/history`,
-3. zachytí odpovede GraphQL operácie `GetAuditActions`, ktoré si stránka načíta sama (presný čas,
-   unikátne ID, akcia, používateľ, IP), a prepína strany tlačidlom „next",
-4. zapíše len **nové** udalosti (deduplikácia podľa ID od DigitalOcean).
+1. starts a browser (Playwright / Chromium) and logs in (e-mail + password + TOTP code),
+2. opens `https://cloud.digitalocean.com/security/history`,
+3. captures the responses of the `GetAuditActions` GraphQL operation that the page loads by itself
+   (exact time, unique ID, action, user, IP) and pages through the results with the "next" button,
+4. writes only **new** events (deduplicated by the ID assigned by DigitalOcean).
 
-Prihlásená session (cookies) sa ukladá a opakovane používa, takže sa neprihlasuje pri každom behu.
+The logged-in session (cookies) is stored and reused, so it does not log in on every run.
 
-> Nejde o oficiálne API. Ak DigitalOcean zmení stránku alebo GraphQL, scraper sa bude musieť
-> upraviť. Používajte ho len na vlastný účet a podľa podmienok DigitalOcean.
+> This is not an official API. If DigitalOcean changes the page or the GraphQL schema, the scraper
+> will need to be adjusted. Use it only on your own account and in accordance with DigitalOcean's
+> terms.
 
-## Požiadavky
+## Requirements
 
 - Python **3.11+** (macOS: `brew install python@3.12`; Ubuntu: `apt install python3.12 python3.12-venv`)
-- Účet DigitalOcean s prihlásením e-mailom a heslom + 2FA cez **TOTP** (authenticator app).
-  Účty cez Google / GitHub SSO nie sú podporované.
-- Linux server: balík `xvfb` (virtuálny displej, inštaluje ho `setup.sh`).
+- A DigitalOcean account that uses e-mail + password login and 2FA via **TOTP** (authenticator app).
+  Accounts using Google / GitHub SSO are not supported.
+- Linux server: the `xvfb` package (virtual display, installed by `setup.sh`).
 
-Odporúčanie: vytvorte **samostatného člena tímu** s minimálnymi (read-only) právami a vlastným TOTP
-secretom, nie osobný owner účet.
+Recommendation: create a **dedicated team member** with minimal (read-only) permissions and its own
+TOTP secret, rather than using a personal owner account.
 
-## Inštalácia (macOS aj Linux)
+## Installation (macOS and Linux)
 
 ```bash
-./scripts/setup.sh          # nájde Python >= 3.11, vytvorí .venv, nainštaluje závislosti a Chromium,
-                            # na Linuxe aj xvfb, a vytvorí .env (práva 600)
+./scripts/setup.sh          # finds Python >= 3.11, creates .venv, installs dependencies and Chromium,
+                            # on Linux also xvfb, and creates .env (permissions 600)
 source .venv/bin/activate
-make test                   # voliteľné: spustí testy
+make test                   # optional: run the tests
 ```
 
-Na Linuxe bez roota spustite po `setup.sh` ešte raz `sudo .venv/bin/playwright install-deps chromium`.
+On Linux without root, run `sudo .venv/bin/playwright install-deps chromium` once more after
+`setup.sh`.
 
-## Nastavenie
+## Configuration
 
-Všetko sa nastavuje v súbore `.env` (vzor: `.env.example`), formát `KLÚČ=hodnota`, bez medzier okolo
-`=`, bežne bez úvodzoviek. Hodnoty so špeciálnymi znakmi (`#`, `$`) dajte do jednoduchých
-úvodzoviek: `DOAL_PASSWORD='ab#c$d'`. Súbor `.env` nikdy necommitujte.
+Everything is configured in the `.env` file (template: `.env.example`), in `KEY=value` format, with
+no spaces around `=` and usually without quotes. Values containing special characters (`#`, `$`)
+should be wrapped in single quotes: `DOAL_PASSWORD='ab#c$d'`. Never commit the `.env` file.
 
-### Prihlasovacie údaje (povinné)
+### Credentials (required)
 
-| Premenná | Popis |
+| Variable | Description |
 |---|---|
-| `DOAL_EMAIL` | e-mail účtu DigitalOcean |
-| `DOAL_PASSWORD` | heslo |
-| `DOAL_TOTP_SECRET` | textový kľúč pod QR kódom pri zapnutí 2FA (písmená A–Z a číslice 2–7). Akceptuje sa aj celé `otpauth://…` URI. **Nie** záložné kódy. |
+| `DOAL_EMAIL` | DigitalOcean account e-mail |
+| `DOAL_PASSWORD` | password |
+| `DOAL_TOTP_SECRET` | the text key shown under the QR code when enabling 2FA (letters A–Z and digits 2–7). A full `otpauth://…` URI is also accepted. **Not** the backup codes. |
 
-TOTP secret získate pri zapnutí authenticator app v Account → Security (voľba „can't scan / enter
-manually"). Zobrazí sa len raz, preto ho uložte. Záložné (recovery) kódy držte bokom, scraper ich
-nepotrebuje.
+You get the TOTP secret when enabling the authenticator app in Account → Security (the "can't scan /
+enter manually" option). It is shown only once, so store it. Keep the backup (recovery) codes
+separately; the scraper does not need them.
 
-### Ostatné
+### Other settings
 
-| Premenná | Predvolené | Popis |
+| Variable | Default | Description |
 |---|---|---|
-| `DOAL_SESSION_MAX_AGE_DAYS` | `7` | Po koľkých dňoch sa uložená session zahodí a prihlási sa nanovo. |
-| `DOAL_SESSION_MAX_AGE_HOURS` | prázdne | To isté v hodinách. **Nastavte iba jedno z týchto dvoch**; keď sú obe prázdne, platí 7 dní. Hodnota nemá presiahnuť dobu platnosti session nastavenú v DigitalOcean. |
-| `DOAL_HEADLESS` | `false` | `true` = bez okna. **Headless blokuje Cloudflare**, nechajte `false`. |
-| `DOAL_OUTPUT_PATH` | `data/audit_logs.ndjson` | výstupný súbor |
-| `DOAL_STATE_PATH` | `data/state.json` | stav deduplikácie (videné ID) |
-| `DOAL_STORAGE_STATE_PATH` | `data/storage_state.json` | uložená session (cookies, **tajné**) |
-| `DOAL_MAX_PAGES` | `100` | maximum strán na jeden beh (1 strana = 25 udalostí) |
-| `DOAL_PAGE_DELAY_S` | `1.5` | pauza medzi stranami; pri chybách (rate limit) zvýšte |
-| `DOAL_NAV_TIMEOUT_MS` | `45000` | timeout navigácie |
-| `DOAL_LOG_LEVEL` | `INFO` | úroveň logovania |
-| `DOAL_LOG_JSON` | `true` | logy ako JSON (na stderr) |
+| `DOAL_SESSION_MAX_AGE_DAYS` | `7` | After how many days the stored session is discarded and a fresh login is performed. |
+| `DOAL_SESSION_MAX_AGE_HOURS` | empty | The same in hours. **Set only one of these two**; when both are empty, 7 days applies. The value should not exceed the session lifetime configured in DigitalOcean. |
+| `DOAL_HEADLESS` | `false` | `true` = no window. **Headless is blocked by Cloudflare**, keep `false`. |
+| `DOAL_OUTPUT_PATH` | `data/audit_logs.ndjson` | output file |
+| `DOAL_STATE_PATH` | `data/state.json` | deduplication state (seen IDs) |
+| `DOAL_STORAGE_STATE_PATH` | `data/storage_state.json` | stored session (cookies, **secret**) |
+| `DOAL_MAX_PAGES` | `100` | maximum pages per run (1 page = 25 events) |
+| `DOAL_PAGE_DELAY_S` | `1.5` | pause between pages; increase on errors (rate limiting) |
+| `DOAL_NAV_TIMEOUT_MS` | `45000` | navigation timeout |
+| `DOAL_LOG_LEVEL` | `INFO` | log level |
+| `DOAL_LOG_JSON` | `true` | logs as JSON (to stderr) |
 
-Selektory (`DOAL_TABLE_SELECTOR`, `DOAL_NEXT_BUTTON_SELECTOR` a `DOAL_*_SELECTOR` pre login) sú
-nastaviteľné pre prípad, že DigitalOcean zmení stránku.
+Selectors (`DOAL_TABLE_SELECTOR`, `DOAL_NEXT_BUTTON_SELECTOR` and the `DOAL_*_SELECTOR` variables for
+login) are configurable in case DigitalOcean changes the page.
 
-## Použitie
+## Usage
 
 ```bash
 source .venv/bin/activate
 
-do-audit login-test --headed   # 1. len test prihlásenia (heslo + TOTP), okno ostane otvorené
-do-audit check                 # 2. overí, že session / stránka s logom funguje
-do-audit scrape                # 3. stiahne nové udalosti do data/audit_logs.ndjson
+do-audit login-test --headed   # 1. login test only (password + TOTP), the window stays open
+do-audit check                 # 2. verifies that the session / audit log page works
+do-audit scrape                # 3. downloads new events into data/audit_logs.ndjson
 ```
 
-| Príkaz | Čo robí |
+| Command | What it does |
 |---|---|
-| `do-audit login-test [--headed]` | Čerstvé prihlásenie bez scrapovania. Vypíše `LOGIN OK` alebo `LOGIN FAILED: <dôvod>`. |
-| `do-audit check [--headed]` | Overí uloženú session / prihlási sa a otvorí stránku Security History. |
-| `do-audit scrape [--headed]` | Stiahne a zapíše nové udalosti. |
-| `do-audit login` | Záloha: ručné prihlásenie v okne a uloženie session (ak by automatické prihlásenie zlyhalo). |
+| `do-audit login-test [--headed]` | Fresh login without scraping. Prints `LOGIN OK` or `LOGIN FAILED: <reason>`. |
+| `do-audit check [--headed]` | Verifies the stored session / logs in and opens the Security History page. |
+| `do-audit scrape [--headed]` | Downloads and writes new events. |
+| `do-audit login` | Fallback: manual login in a window and session saving (if automatic login fails). |
 
-`--headed` zobrazí okno prehliadača, hodí sa pri ladení. Skratky: `make check`, `make scrape`.
+`--headed` shows the browser window, which is useful for debugging. Shortcuts: `make check`,
+`make scrape`.
 
-**Návratové kódy:** `0` OK, `2` prihlásenie/session zlyhali (na toto nastavte alert), iné nenulové
-= iná chyba (podrobnosti v logu).
+**Exit codes:** `0` OK, `2` login/session failed (set up an alert on this), any other non-zero
+code = another error (details in the log).
 
-### Opakované spúšťanie (inkrementálne)
+### Repeated runs (incremental)
 
-Prvý beh stiahne celú históriu. Ďalšie behy načítajú stranu 1 a zapíšu **len udalosti, ktoré ešte
-nemajú zaznamenané ID**. Ak je na strane 1 jedna nová udalosť a ostatné staré, zapíše sa jedna.
-Keď nie je nič nové, výsledok je `new_events: 0`. Zápis prebehne až po úplnom dokončení behu, takže
-chyba uprostred nezanechá v dátach medzeru. Začať odznova: zmažte **spolu** `data/state.json` a
-`data/audit_logs.ndjson`.
+The first run downloads the entire history. Subsequent runs load page 1 and write **only events
+whose ID has not been recorded yet**. If page 1 contains one new event and the rest are old, one
+event is written. When there is nothing new, the result is `new_events: 0`. Writing happens only
+after the run has fully completed, so an error midway does not leave a gap in the data. To start
+over, delete **both** `data/state.json` and `data/audit_logs.ndjson`.
 
-## Výstup
+## Output
 
-`data/audit_logs.ndjson`, jedna udalosť na riadok, od najstaršej po najnovšiu:
+`data/audit_logs.ndjson`, one event per line, from oldest to newest:
 
 ```json
 {"event_id":"01M4TG1KT82GZA05YN9H7JASGE","action":"droplet.create","resource_type":"Droplet","resource_id":"608642988","user":"Alice Example","user_email":"alice@example.com","ip_address":"203.0.113.10","timestamp_utc":"2026-10-13T11:23:26Z","scraped_at":"2026-10-14T08:15:00.123456Z","source":"digitalocean_audit"}
 ```
 
-Súbor obsahuje mená, e-maily a IP adresy, berte ho ako citlivé dáta.
+The file contains names, e-mails and IP addresses; treat it as sensitive data.
 
-## Nasadenie na server
+## Server deployment
 
 **systemd (Ubuntu):**
 
 ```bash
 sudo useradd -r -m -d /opt/do-audit doaudit
-# nahrajte projekt do /opt/do-audit, ako používateľ doaudit spustite ./scripts/setup.sh a upravte .env
+# upload the project to /opt/do-audit, run ./scripts/setup.sh as the doaudit user and edit .env
 sudo cp deploy/do-audit.service deploy/do-audit.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now do-audit.timer       # beh každých 15 minút
+sudo systemctl enable --now do-audit.timer       # runs every 15 minutes
 systemctl list-timers do-audit.timer
-journalctl -u do-audit.service -f                # logy
+journalctl -u do-audit.service -f                # logs
 ```
 
-Server nemá displej, preto scraper sám spustí virtuálny (Xvfb) a v ňom bežný, nie headless, Chromium.
-Cloudflare môže výzvu zopakovať pre IP adresu datacentra, ostrý beh treba overiť priamo na serveri.
+The server has no display, so the scraper starts a virtual one (Xvfb) itself and runs a regular,
+non-headless Chromium in it. Cloudflare may repeat the challenge for a datacenter IP address, so a
+production run must be verified directly on the server.
 
-**Docker:** `docker build -t do-audit .` a potom
+**Docker:** `docker build -t do-audit .` and then
 `docker run --rm --env-file .env -v $PWD/data:/data do-audit scrape`.
 
-## Bezpečnosť
+## Security
 
-- `.env` (heslo, TOTP secret) a `data/storage_state.json` (cookies = prístup k účtu bez hesla)
-  chráňte: práva `600`, vlastník len používateľ služby, nikdy v gite. `.gitignore` ich vynecháva.
-- Heslo aj TOTP secret ležia na jednom serveri, takže 2FA je tam prakticky jednofaktorová. Preto
-  samostatný read-only účet a krátky `DOAL_SESSION_MAX_AGE_*`.
-- Pri úniku zmeňte heslo a obnovte 2FA v DigitalOcean.
-- Súbory v `data/debug/` (screenshoty, HTML) môžu obsahovať e-maily, nezdieľajte ich.
+- Protect `.env` (password, TOTP secret) and `data/storage_state.json` (cookies = access to the
+  account without a password): permissions `600`, owned only by the service user, never in git.
+  `.gitignore` excludes them.
+- The password and the TOTP secret live on the same server, so 2FA there is effectively
+  single-factor. Hence the dedicated read-only account and a short `DOAL_SESSION_MAX_AGE_*`.
+- On a leak, change the password and re-enroll 2FA in DigitalOcean.
+- Files in `data/debug/` (screenshots, HTML) may contain e-mails; do not share them.
 
-## Riešenie problémov
+## Troubleshooting
 
-| Príznak | Príčina / riešenie |
+| Symptom | Cause / solution |
 |---|---|
-| `missing/empty: DOAL_…` | prázdna hodnota v `.env`; `do-audit` spúšťajte z koreňa projektu, odkiaľ sa `.env` číta |
-| `DOAL_TOTP_SECRET is not valid base32` | zlý kľúč; treba textový kľúč pod QR kódom (A–Z, 2–7), nie kód z aplikácie ani záložný kód |
-| `Cloudflare bot challenge…` | headless režim; nastavte `DOAL_HEADLESS=false` (na serveri Xvfb). Ak výzvu dostanete aj tak, použite `do-audit login` a session skopírujte |
-| `2FA code not accepted twice` | zlý secret alebo nepresný čas systému |
-| `audit_graphql_error` / `next_page_retry` | dočasná chyba alebo rate limit; zvýšte `DOAL_PAGE_DELAY_S` |
-| `audit table not found` / `no valid GetAuditActions response` | zmenila sa stránka; pozrite `data/debug/*.png` a `.html` a upravte selektory |
+| `missing/empty: DOAL_…` | empty value in `.env`; run `do-audit` from the project root, where `.env` is read from |
+| `DOAL_TOTP_SECRET is not valid base32` | wrong key; you need the text key under the QR code (A–Z, 2–7), not the code from the app or a backup code |
+| `Cloudflare bot challenge…` | headless mode; set `DOAL_HEADLESS=false` (Xvfb on the server). If you still get the challenge, use `do-audit login` and copy the session over |
+| `2FA code not accepted twice` | wrong secret or inaccurate system time |
+| `audit_graphql_error` / `next_page_retry` | temporary error or rate limit; increase `DOAL_PAGE_DELAY_S` |
+| `audit table not found` / `no valid GetAuditActions response` | the page changed; check `data/debug/*.png` and `.html` and adjust the selectors |
 | `cannot start Xvfb` | `sudo apt install xvfb` |
 
-## Štruktúra projektu
+## Project structure
 
 ```
 src/do_audit_scraper/
-  config.py    nastavenia (DOAL_*)         parser.py   GraphQL odpoveď → AuditEvent
-  browser.py   Playwright, login, strany   storage.py  NDJSON + dedup stav
-  scraper.py   inkrementálny beh           cli.py      príkazy do-audit
+  config.py    settings (DOAL_*)           parser.py   GraphQL response → AuditEvent
+  browser.py   Playwright, login, pages    storage.py  NDJSON + dedup state
+  scraper.py   incremental run             cli.py      do-audit commands
   models.py    AuditEvent
 deploy/        systemd service + timer     scripts/    setup.sh
-tests/         testy (pytest)              Dockerfile, Makefile, pyproject.toml
+tests/         tests (pytest)              Dockerfile, Makefile, pyproject.toml
 ```
 
-## Vývoj
+## Development
 
 ```bash
 make test        # pytest
 make lint        # ruff
 ```
 
-## Plán
+## Roadmap
 
-- Fáza 2: integrácia do **Wazuh** (`localfile` s `log_format json`, decodery a pravidlá).
-- Voliteľne: doplnkový kolektor cez oficiálne API (`/v2/actions`) s read-only tokenom.
+- Phase 2: **Wazuh** integration (`localfile` with `log_format json`, decoders and rules).
+- Optional: a complementary collector via the official API (`/v2/actions`) with a read-only token.
