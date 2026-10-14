@@ -1,0 +1,5 @@
+{"data":{"GetAuditActions":{"audit_actions":[
+ {"id":"0","ulid":"01M4TG1KT82GZA05YN9H7JASGE","name":"api_token.create","resource_type":null,"resource_id":null,"actor_ip":"203.0.113.10","created_at":"2026-10-13T11:23:26Z","actor":{"name":"Alice Example","email":"alice@example.com"}},
+ {"id":"0","ulid":"01M4TG1KT82GZA05YN9H7JASGF","name":"firewall.created","resource_type":null,"resource_id":null,"actor_ip":"203.0.113.11","created_at":"2026-10-13T11:20:00Z","actor":{"name":"Bob Example","email":"bob@example.com"}},
+ {"id":"0","ulid":"01M4TG1KT82GZA05YN9H7JASGG","name":"firewall.created","resource_type":null,"resource_id":null,"actor_ip":"203.0.113.11","created_at":"2026-10-13T11:20:00Z","actor":{"name":"Bob Example","email":"bob@example.com"}}
+],"meta":{"pagination":{"page":1,"pages":2,"total":5}}}}}

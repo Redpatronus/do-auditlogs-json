@@ -1,0 +1,15 @@
+[Unit]
+Description=DigitalOcean audit log scraper
+
+[Service]
+Type=oneshot
+User=doaudit
+WorkingDirectory=/opt/do-audit
+EnvironmentFile=/opt/do-audit/.env
+# Headed Chromium on an automatic virtual display (needs: apt install xvfb)
+ExecStart=/opt/do-audit/.venv/bin/do-audit scrape
+# Exit code 2 = session expired -> alert on this
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/do-audit/data
