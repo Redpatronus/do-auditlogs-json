@@ -60,17 +60,21 @@ If the scraper ends on `…/dashboard?i=…`, the path is wrong for that account
 One script prepares everything, another one only runs the scraper (ideal for cron).
 
 ```bash
-# 1. Put the project in /opt/do-audit (git clone <url> /opt/do-audit), then as root:
+# 1. Put the project somewhere (e.g. git clone <url> /opt/do-audit), go there, run as root:
+cd /opt/do-audit
 sudo ./scripts/install.sh              # packages, user, venv, dependencies, Chromium + its libs, .env
 # add --systemd to also install the systemd timer (every 15 minutes)
 
 # 2. Fill in .env: DOAL_EMAIL, DOAL_PASSWORD, DOAL_TOTP_SECRET, DOAL_AUDIT_PATH
-sudo -u doaudit nano /opt/do-audit/.env
+sudo -u doaudit nano .env
 
-# 3. Test, then run
-sudo -u doaudit /opt/do-audit/scripts/run.sh login-test     # expect: LOGIN OK
-sudo -u doaudit /opt/do-audit/scripts/run.sh                # = scrape
+# 3. Test, then run (still in the project directory)
+sudo -u doaudit ./scripts/run.sh login-test     # expect: LOGIN OK
+sudo -u doaudit ./scripts/run.sh                # = scrape
 ```
+
+The examples use `/opt/do-audit`; any other location works the same, just `cd` into it first. Use
+absolute paths (`/opt/do-audit/scripts/run.sh`) in cron and systemd.
 
 `scripts/install.sh` is idempotent (re-run after updating the code). It creates the service user
 `doaudit` (`--user NAME` for another one) and gives it ownership of the project, `data/` mode `700`
