@@ -180,16 +180,44 @@ def _dump_debug(cfg: Settings, page: Page, name: str) -> str:
     return str(d)
 
 
+def _email_visible(page: Page, cfg: Settings) -> bool:
+    field = page.locator(cfg.email_selector)
+    return field.count() > 0 and field.first.is_visible()
+
+
+def _ensure_email_form(cfg: Settings, page: Page) -> bool:
+    """Return True when the e-mail field can be filled.
+
+    DigitalOcean remembers the last user and then shows a password-only form with a "Login with
+    a different account" link. Prefer switching to the e-mail form so the configured account is
+    used; if there is no such link, fall back to the password-only form (returns False).
+    """
+    page.wait_for_selector(f"{cfg.email_selector}, {cfg.password_selector}", state="visible")
+    if _email_visible(page, cfg):
+        return True
+    switch = page.get_by_text(re.compile(r"different account", re.I))
+    if switch.count():
+        switch.first.click(timeout=5_000)
+        try:
+            page.wait_for_selector(cfg.email_selector, state="visible", timeout=10_000)
+            return True
+        except PlaywrightTimeout:
+            log.warning("login_email_form_not_shown_after_switch")
+    log.info("login_password_only_form")
+    return False
+
+
 def auto_login(cfg: Settings, page: Page) -> None:
     """Headless email + password + TOTP login. Selectors are configurable via DOAL_*."""
     assert cfg.email and cfg.password and cfg.totp_secret  # noqa: S101
     log.info("auto_login_start")
     _goto(page, cfg.base_url.rstrip("/") + cfg.login_path)
     _dismiss_consent(page)
-    page.fill(cfg.email_selector, cfg.email)
-    if page.locator(cfg.password_selector).count() == 0:  # two-step form
-        page.press(cfg.email_selector, "Enter")
-        page.wait_for_selector(cfg.password_selector)
+    if _ensure_email_form(cfg, page):
+        page.fill(cfg.email_selector, cfg.email)
+        if page.locator(cfg.password_selector).count() == 0:  # two-step form
+            page.press(cfg.email_selector, "Enter")
+            page.wait_for_selector(cfg.password_selector)
     page.fill(cfg.password_selector, cfg.password.get_secret_value())
     _dismiss_consent(page)  # banner may re-appear after navigation
     page.press(cfg.password_selector, "Enter")
