@@ -59,7 +59,7 @@ chown -R "$APP_USER": "$ROOT"
 if [ "$SYSTEMD" = "1" ]; then
   echo "==> systemd timer"
   for f in do-audit.service do-audit.timer; do
-    sed -e "s#/opt/do-audit#$ROOT#g" -e "s#^User=.*#User=$APP_USER#" \
+    sed -e "s#/opt/do-auditlogs-json#$ROOT#g" -e "s#^User=.*#User=$APP_USER#" \
       "$ROOT/deploy/$f" > "/etc/systemd/system/$f"
   done
   systemctl daemon-reload

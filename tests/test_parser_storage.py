@@ -33,3 +33,18 @@ def test_store_dedup(tmp_path):
     store2 = Store(tmp_path / "o.ndjson", tmp_path / "s.json", 100)  # state survives restart
     assert store2.append(events) == 0
     assert len((tmp_path / "o.ndjson").read_text().splitlines()) == 3
+
+
+def test_heartbeat_written_on_empty_run(tmp_path, monkeypatch):
+    from do_audit_scraper import scraper
+    from do_audit_scraper.config import Settings
+
+    monkeypatch.setattr(scraper, "iter_pages", lambda cfg: iter(()))
+    cfg = Settings(
+        output_path=tmp_path / "o.ndjson",
+        state_path=tmp_path / "s.json",
+        lock_path=tmp_path / "l.lock",
+        heartbeat_path=tmp_path / "heartbeat",
+    )
+    assert scraper.run_scrape(cfg) == 0
+    assert cfg.heartbeat_path.exists()

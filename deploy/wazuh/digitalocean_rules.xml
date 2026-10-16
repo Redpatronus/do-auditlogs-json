@@ -1,0 +1,134 @@
+<!--
+  Wazuh rules for the DigitalOcean audit log written by do-audit (NDJSON, one event per line).
+
+  1) Add the file to /var/ossec/etc/ossec.conf (inside <ossec_config>):
+
+       <localfile>
+         <log_format>json</log_format>
+         <location>/opt/do-auditlogs-json/data/audit_logs.ndjson</location>
+       </localfile>
+
+  2) Install this file as its own rules file (Wazuh loads every *.xml in that directory, so the
+     existing local_rules.xml stays untouched). Rule IDs used here: 100500-100521; this must print
+     nothing (otherwise renumber the rules below):
+       grep -ho 'rule id="1005[0-9][0-9]"' /var/ossec/etc/rules/*.xml
+       cp digitalocean_rules.xml /var/ossec/etc/rules/digitalocean_rules.xml
+       chown wazuh:wazuh /var/ossec/etc/rules/digitalocean_rules.xml
+       chmod 660 /var/ossec/etc/rules/digitalocean_rules.xml
+  2b) Scraper health: install do-scraper-check.sh and add a second localfile (rules 100520/100521):
+
+       cp do-scraper-check.sh /usr/local/bin/ && chmod 755 /usr/local/bin/do-scraper-check.sh
+       <localfile>
+         <log_format>command</log_format>
+         <command>/usr/local/bin/do-scraper-check.sh</command>
+         <alias>do-scraper-check</alias>
+         <frequency>600</frequency>
+       </localfile>
+
+     On a Wazuh agent (not the manager) also set logcollector.remote_commands=1 in
+     /var/ossec/etc/local_internal_options.conf.
+  3) Test:  head -n 1 data/audit_logs.ndjson | /var/ossec/bin/wazuh-logtest
+     Then:  systemctl restart wazuh-manager
+
+  Event names look like "<resource>.<verb>" (droplet.create, firewall.created, api_token.create).
+  DigitalOcean does not publish a full list, so the rules match patterns. List the real ones with
+    jq -r .action data/audit_logs.ndjson | sort | uniq -c | sort -rn
+  and tighten the regular expressions below to what you actually see.
+-->
+<group name="digitalocean,audit,">
+
+  <!-- Every event from the scraper. -->
+  <rule id="100500" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="source">digitalocean_audit</field>
+    <description>DigitalOcean audit event by $(user_email)</description>
+  </rule>
+
+  <!-- Resources removed. -->
+  <rule id="100501" level="7">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"[^"]*\.(destroy|destroyed|delete|deleted|remove|removed|purge|purged)"</regex>
+    <description>DigitalOcean: resource removed by $(user_email)</description>
+    <mitre>
+      <id>T1485</id>
+    </mitre>
+  </rule>
+
+  <!-- Credentials and keys created, changed or removed. -->
+  <rule id="100502" level="8">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"(api_token|access_token|personal_access_token|oauth|ssh_key|spaces_key|key|certificate)\.</regex>
+    <description>DigitalOcean: credential/key change by $(user_email)</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+  </rule>
+
+  <!-- Team membership, invitations and roles. -->
+  <rule id="100503" level="8">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"[^"]*(invite|member|role|permission|owner)</regex>
+    <description>DigitalOcean: team/access change by $(user_email)</description>
+    <mitre>
+      <id>T1098</id>
+    </mitre>
+  </rule>
+
+  <!-- 2FA, password and SSO settings of the account. -->
+  <rule id="100504" level="10">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"[^"]*(2fa|tfa|two_factor|mfa|password|sso|saml|security_key|recovery)</regex>
+    <description>DigitalOcean: authentication settings change by $(user_email)</description>
+    <mitre>
+      <id>T1556</id>
+    </mitre>
+  </rule>
+
+  <!-- Network exposure: firewalls, VPCs, IPs, load balancers. -->
+  <rule id="100505" level="6">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"(firewall|vpc|reserved_ip|floating_ip|load_balancer|domain)\.</regex>
+    <description>DigitalOcean: network change by $(user_email)</description>
+  </rule>
+
+  <!-- Failed or suspicious logins, if DigitalOcean records them. -->
+  <rule id="100506" level="8">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"[^"]*(login|session|auth)[^"]*(fail|denied|invalid|blocked)</regex>
+    <description>DigitalOcean: failed login for $(user_email)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+  </rule>
+
+  <!-- Billing and payment changes. -->
+  <rule id="100507" level="5">
+    <if_sid>100500</if_sid>
+    <regex type="pcre2">(?i)"action":"(billing|payment|invoice|credit)</regex>
+    <description>DigitalOcean: billing change by $(user_email)</description>
+  </rule>
+
+  <!-- Many removals by the same user in a short time (mass deletion). -->
+  <rule id="100510" level="12" frequency="5" timeframe="300">
+    <if_matched_sid>100501</if_matched_sid>
+    <same_field>user_email</same_field>
+    <description>DigitalOcean: mass deletion, 5+ removals in 5 minutes by $(user_email)</description>
+    <mitre>
+      <id>T1485</id>
+    </mitre>
+  </rule>
+
+  <!-- Scraper health (see do-scraper-check.sh and the command localfile in the header). -->
+  <rule id="100520" level="0">
+    <if_sid>530</if_sid>
+    <match>^ossec: output: 'do-scraper-check': OK</match>
+    <description>DigitalOcean scraper: heartbeat OK</description>
+  </rule>
+
+  <rule id="100521" level="12">
+    <if_sid>530</if_sid>
+    <match>^ossec: output: 'do-scraper-check': STALE</match>
+    <description>DigitalOcean scraper: no heartbeat, audit logs are not being collected</description>
+  </rule>
+
+</group>
