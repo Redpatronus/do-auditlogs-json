@@ -29,5 +29,7 @@ def run_scrape(cfg: Settings) -> int:
         # retries from the newest page (a partial write would leave an unrecoverable gap).
         # Pages are newest-first; write oldest-first so the file stays chronological.
         written = store.append(reversed(collected))
+        cfg.heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg.heartbeat_path.touch()  # only reached when the whole run succeeded
         log.info("scrape_done", new_events=written)
         return written

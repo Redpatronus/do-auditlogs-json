@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     output_path: Path = Path("data/audit_logs.ndjson")
     state_path: Path = Path("data/state.json")
     lock_path: Path = Path("data/scrape.lock")
+    # Touched after every successful run (even with 0 new events); Wazuh alerts when it goes stale.
+    heartbeat_path: Path = Path("data/heartbeat")
 
     # Headless Chromium is challenged by Cloudflare; default is a normal window (on a Linux
     # server without a display a virtual Xvfb display is started automatically).

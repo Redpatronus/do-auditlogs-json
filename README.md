@@ -60,8 +60,8 @@ If the scraper ends on `…/dashboard?i=…`, the path is wrong for that account
 One script prepares everything, another one only runs the scraper (ideal for cron).
 
 ```bash
-# 1. Put the project somewhere (e.g. git clone <url> /opt/do-audit), go there, run as root:
-cd /opt/do-audit
+# 1. Put the project somewhere (e.g. git clone <url> /opt/do-auditlogs-json), go there, run as root:
+cd /opt/do-auditlogs-json
 sudo ./scripts/install.sh              # packages, user, venv, dependencies, Chromium + its libs, .env
 # add --systemd to also install the systemd timer (every 15 minutes)
 
@@ -73,13 +73,13 @@ sudo -u doaudit ./scripts/run.sh login-test     # expect: LOGIN OK
 sudo -u doaudit ./scripts/run.sh                # = scrape
 ```
 
-The examples use `/opt/do-audit`; any other location works the same, just `cd` into it first. Use
-absolute paths (`/opt/do-audit/scripts/run.sh`) in cron and systemd.
+The examples use `/opt/do-auditlogs-json`; any other location works the same, just `cd` into it first. Use
+absolute paths (`/opt/do-auditlogs-json/scripts/run.sh`) in cron and systemd.
 
 `scripts/install.sh` is idempotent (re-run after updating the code). It creates the service user
 `doaudit` (`--user NAME` for another one) and gives it ownership of the project, `data/` mode `700`
-and `.env` mode `600`. The project must be on a path that user can reach (e.g. `/opt/do-audit`, not
-`/root`) and the scripts must sit directly in `/opt/do-audit/scripts/`, not in a nested folder.
+and `.env` mode `600`. The project must be on a path that user can reach (e.g. `/opt/do-auditlogs-json`, not
+`/root`) and the scripts must sit directly in `/opt/do-auditlogs-json/scripts/`, not in a nested folder.
 
 `scripts/run.sh [args]` only runs `do-audit` (default `scrape`). It works from any directory, needs
 no prepared environment, returns do-audit's exit code, and when started as root it switches to the
@@ -90,7 +90,7 @@ project owner so no root-owned files appear in `data/`.
 ```bash
 # cron
 sudo crontab -u doaudit -e
-*/15 * * * * /opt/do-audit/scripts/run.sh >> /opt/do-audit/data/run.log 2>&1
+*/15 * * * * /opt/do-auditlogs-json/scripts/run.sh >> /opt/do-auditlogs-json/data/run.log 2>&1
 
 # or systemd
 sudo ./scripts/install.sh --systemd
@@ -135,6 +135,7 @@ usually no quotes. Values with special characters (`#`, `$`) go in single quotes
 | `DOAL_SESSION_MAX_AGE_DAYS` | `7` | After how many days the cached session is dropped and a fresh login is done. |
 | `DOAL_SESSION_MAX_AGE_HOURS` | empty | The same in hours. **Set only one of the two**; both empty = 7 days. Must not exceed the session lifetime configured in DigitalOcean. |
 | `DOAL_OUTPUT_PATH` | `data/audit_logs.ndjson` | output file |
+| `DOAL_HEARTBEAT_PATH` | `data/heartbeat` | touched after every successful scrape (even with 0 new events); `deploy/wazuh/do-scraper-check.sh` + Wazuh rule 100521 alert when it is stale |
 | `DOAL_STATE_PATH` | `data/state.json` | deduplication state (seen IDs) |
 | `DOAL_STORAGE_STATE_PATH` | `data/storage_state.json` | cached session (cookies, **secret**) |
 | `DOAL_MAX_PAGES` | `100` | maximum pages per run (1 page = 25 events) |
@@ -191,9 +192,9 @@ looks for Chromium in `/root/.cache` and may create root-owned files in `data/`.
 
 | Symptom | Cause / solution |
 |---|---|
-| `Executable doesn't exist at /root/.cache/...` | Started as root. Use `sudo -u doaudit /opt/do-audit/scripts/run.sh …`. |
+| `Executable doesn't exist at /root/.cache/...` | Started as root. Use `sudo -u doaudit /opt/do-auditlogs-json/scripts/run.sh …`. |
 | `error while loading shared libraries: libglib-2.0.so.0` | Chromium system libraries missing. Re-run `sudo ./scripts/install.sh`. |
-| `Permission denied: 'data/scrape.lock'` | `data/` has wrong owner/mode. `sudo chown -R doaudit: /opt/do-audit && sudo chmod 700 /opt/do-audit/data`. |
+| `Permission denied: 'data/scrape.lock'` | `data/` has wrong owner/mode. `sudo chown -R doaudit: /opt/do-auditlogs-json && sudo chmod 700 /opt/do-auditlogs-json/data`. |
 | `source: not found` (in a `doaudit` shell) | The shell is `sh`. Use `. .venv/bin/activate` or just `scripts/run.sh`. |
 | `missing/empty: DOAL_…` | Empty value in `.env`, or `do-audit` was not run from the project root (use `scripts/run.sh`). |
 | `DOAL_TOTP_SECRET is not valid base32` | Wrong key. Use the text key under the QR code (A–Z, 2–7), not an app code or a backup code. |
